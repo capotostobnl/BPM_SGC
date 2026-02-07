@@ -21,18 +21,14 @@ def draw_bpm_image(canvas, filename, x, y, w, h):
         canvas.restoreState()
 
 # ==========================================
-# PART 1: DATA PROCESSING & SORTING (IMPROVEMENT FINDER)
+# PART 1: DATA PROCESSING & SORTING
 # ==========================================
 report_file = "Data/RmsData.txt"
 bpm_data = []
 stats_info = []
 
-# Correction Factor for RMS (sqrt(32))
 CORRECTION_FACTOR = sqrt(32)
-
-# THRESHOLD: Improvement Ratio
-# If (Old / New) > 1.5, the old table is significantly worse.
-IMPROVEMENT_THRESHOLD = 1.2  # 20% improvement is worth flagging
+IMPROVEMENT_THRESHOLD = 2.0 
 
 if os.path.exists(report_file):
     raw_data = []
@@ -40,33 +36,30 @@ if os.path.exists(report_file):
         raw_data = [line.strip().split(',') for line in f if line.strip()]
 
     parsed_rows = []
-    ratios_x = []
-    ratios_y = []
+    
+    # Temp lists to calculate global stats for Z-Scores
+    list_old_x = []
+    list_old_y = []
 
     for row in raw_data:
         if len(row) < 9: continue
         try:
             name = row[8]
             
-            # --- OLD TABLE (Current State) ---
             old_x = float(row[3]) / CORRECTION_FACTOR
             old_y = float(row[7]) / CORRECTION_FACTOR
-
-            # --- NEW TABLE (Potential State) ---
             new_x = float(row[2]) / CORRECTION_FACTOR
             new_y = float(row[6]) / CORRECTION_FACTOR
-
-            # Avoid division by zero
+            
+            # Avoid div/0
             nx = new_x if new_x > 0.001 else 0.001
             ny = new_y if new_y > 0.001 else 0.001
-
-            # Calculate Improvement Ratio (How much better is the new table?)
-            # Ratio = 2.0 means Old was 2x worse than New.
+            
             ratio_x = old_x / nx
             ratio_y = old_y / ny
             
-            ratios_x.append(ratio_x)
-            ratios_y.append(ratio_y)
+            list_old_x.append(old_x)
+            list_old_y.append(old_y)
 
             parsed_rows.append({
                 'name': name, 
@@ -77,25 +70,38 @@ if os.path.exists(report_file):
             continue
 
     if len(parsed_rows) > 0:
+        # --- CALCULATE GLOBAL STATS (Z-SCORE BASELINE) ---
+        mean_old_x = np.mean(list_old_x)
+        std_old_x  = np.std(list_old_x)
+        
+        mean_old_y = np.mean(list_old_y)
+        std_old_y  = np.std(list_old_y)
+
         stats_info = [
-            f"Total BPMs Scanned: {len(parsed_rows)}",
-            f"Improvement Threshold: > {IMPROVEMENT_THRESHOLD:.1f}x Better",
-            "Sorted by: Improvement Potential (Ratio)"
+            f"Total BPMs: {len(parsed_rows)}",
+            f"Improvement Threshold: > {IMPROVEMENT_THRESHOLD:.1f}x Gain",
+            f"Global Mean (Old Table): X={mean_old_x:.2f}, Y={mean_old_y:.2f}"
         ]
 
         # --- SCORE & SORT ---
         for row in parsed_rows:
-            # Check if significant improvement is possible
+            # Check for Gain Improvement
             row['improves_x'] = row['ratio_x'] > IMPROVEMENT_THRESHOLD
             row['improves_y'] = row['ratio_y'] > IMPROVEMENT_THRESHOLD
-            
-            # If EITHER axis improves significantly, flag the unit
             row['flagged'] = row['improves_x'] or row['improves_y']
             
-            # Sort Score: Max improvement on either axis
+            # Calculate Z-Scores (How many sigmas away from average?)
+            # Formula: (Value - Mean) / StdDev
+            if std_old_x > 0: row['z_x'] = (row['old_x'] - mean_old_x) / std_old_x
+            else: row['z_x'] = 0
+            
+            if std_old_y > 0: row['z_y'] = (row['old_y'] - mean_old_y) / std_old_y
+            else: row['z_y'] = 0
+
+            # Sort Score: Max improvement available
             row['score'] = max(row['ratio_x'], row['ratio_y'])
 
-        # Sort descending (Biggest Improvement at top)
+        # Sort descending (Biggest Improvement Potential at top)
         bpm_data = sorted(parsed_rows, key=lambda k: k['score'], reverse=True)
 
 # ==========================================
@@ -107,27 +113,37 @@ c.setPageSize((43*cm, 24*cm))
 # Constants for Table Layout
 y_start = 20*cm
 row_height = 0.8*cm
-col_name = 2*cm
-col_x_old = 7*cm
-col_x_new = 10.5*cm
-col_x_rat = 14*cm  # Ratio column
-col_y_old = 18*cm
+col_name = 1.5*cm
+
+# Group X Columns
+col_x_old = 5.5*cm
+col_x_new = 8.5*cm
+col_x_rat = 11.5*cm  
+col_x_sig = 14.5*cm # New Sigma Column
+
+# Group Y Columns
+col_y_old = 18.5*cm
 col_y_new = 21.5*cm
-col_y_rat = 25*cm  # Ratio column
-col_status = 30*cm
+col_y_rat = 24.5*cm  
+col_y_sig = 27.5*cm # New Sigma Column
+
+col_status = 31*cm
 
 def draw_header(c, y):
     c.setFont("Helvetica-Bold", 11)
     c.setFillColorRGB(0, 0, 0)
     c.drawString(col_name, y, "BPM Name")
     
+    # Headers
     c.drawString(col_x_old, y, "Old X")
     c.drawString(col_x_new, y, "New X")
-    c.drawString(col_x_rat, y, "Gain X") # "Gain" = Ratio
+    c.drawString(col_x_rat, y, "Gain") 
+    c.drawString(col_x_sig, y, "Sig X") 
     
     c.drawString(col_y_old, y, "Old Y")
     c.drawString(col_y_new, y, "New Y")
-    c.drawString(col_y_rat, y, "Gain Y")
+    c.drawString(col_y_rat, y, "Gain")
+    c.drawString(col_y_sig, y, "Sig Y") 
     
     c.drawString(col_status, y, "Action")
     c.line(1*cm, y - 0.2*cm, 40*cm, y - 0.2*cm)
@@ -147,15 +163,13 @@ for line in stats_info:
 current_y = draw_header(c, y_start)
 
 for row in bpm_data:
-    # 1. Background Color
-    # Green = Big Improvement Available (Good!)
-    # White = No change needed
+    # 1. Background Color Logic
     if row['flagged']:
-        c.setFillColorRGB(0.8, 1, 0.8) # Light Green (Update Recommended)
+        c.setFillColorRGB(1, 0.8, 0.8) # Red (Update)
     else:
-        c.setFillColorRGB(1, 1, 1) # White
+        c.setFillColorRGB(0.8, 1, 0.8) # Green (Good)
     
-    c.rect(1.5*cm, current_y - 0.2*cm, 38*cm, row_height, fill=1, stroke=0)
+    c.rect(1.0*cm, current_y - 0.2*cm, 40*cm, row_height, fill=1, stroke=0)
 
     # 2. Text Data
     c.setFillColorRGB(0, 0, 0)
@@ -167,25 +181,35 @@ for row in bpm_data:
     c.drawString(col_x_old, current_y + 0.2*cm, f"{row['old_x']:.2f}")
     c.drawString(col_x_new, current_y + 0.2*cm, f"{row['new_x']:.2f}")
     
+    # Bold Gain if Significant
     if row['improves_x']: c.setFont("Helvetica-Bold", 11)
     else: c.setFont("Helvetica", 11)
     c.drawString(col_x_rat, current_y + 0.2*cm, f"{row['ratio_x']:.1f}x")
+    
+    # Sigma X (Regular Font)
+    c.setFont("Helvetica", 11)
+    c.drawString(col_x_sig, current_y + 0.2*cm, f"{row['z_x']:.1f}")
 
     # --- Y Data ---
-    c.setFont("Helvetica", 11)
     c.drawString(col_y_old, current_y + 0.2*cm, f"{row['old_y']:.2f}")
     c.drawString(col_y_new, current_y + 0.2*cm, f"{row['new_y']:.2f}")
     
+    # Bold Gain if Significant
     if row['improves_y']: c.setFont("Helvetica-Bold", 11)
     else: c.setFont("Helvetica", 11)
     c.drawString(col_y_rat, current_y + 0.2*cm, f"{row['ratio_y']:.1f}x")
 
-    # --- Status ---
+    # Sigma Y (Regular Font)
+    c.setFont("Helvetica", 11)
+    c.drawString(col_y_sig, current_y + 0.2*cm, f"{row['z_y']:.1f}")
+
+    # --- Status Text ---
     c.setFont("Helvetica-Bold", 11)
     if row['flagged']:
+        c.setFillColorRGB(0, 0, 0) 
         c.drawString(col_status, current_y + 0.2*cm, "UPDATE")
     else:
-        c.setFillColorRGB(0.6, 0.6, 0.6) # Gray text
+        c.setFillColorRGB(0.2, 0.4, 0.2) 
         c.drawString(col_status, current_y + 0.2*cm, "No Change")
 
     current_y -= row_height
