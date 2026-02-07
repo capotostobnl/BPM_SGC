@@ -165,7 +165,7 @@ current_y = draw_header(c, y_start)
 for row in bpm_data:
     # 1. Background Color Logic
     if row['flagged']:
-        c.setFillColorRGB(1, 0.8, 0.8) # Red (Update)
+        c.setFillColorRGB(1, 0.8, 0.8) # Red (Update suggested)
     else:
         c.setFillColorRGB(0.8, 1, 0.8) # Green (Good)
     
@@ -207,7 +207,7 @@ for row in bpm_data:
     c.setFont("Helvetica-Bold", 11)
     if row['flagged']:
         c.setFillColorRGB(0, 0, 0) 
-        c.drawString(col_status, current_y + 0.2*cm, "UPDATE")
+        c.drawString(col_status, current_y + 0.2*cm, "UPDATE SUGGESTED")
     else:
         c.setFillColorRGB(0.2, 0.4, 0.2) 
         c.drawString(col_status, current_y + 0.2*cm, "No Change")
