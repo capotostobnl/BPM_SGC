@@ -3,6 +3,7 @@
 """
 import os
 import numpy as np
+from math import sqrt
 from reportlab.lib.units import cm
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib import colors
@@ -26,54 +27,82 @@ report_file = "Data/RmsData.txt"
 bpm_data = []
 stats_info = []
 
+# Correction Factor for RMS (sqrt(32))
+# The collection script summed squared errors but didn't divide by N=32
+CORRECTION_FACTOR = sqrt(32)
+
 if os.path.exists(report_file):
-    # 1. Read Data
     raw_data = []
     with open(report_file, 'r') as f:
         raw_data = [line.strip().split(',') for line in f if line.strip()]
 
-    # 2. Parse Valid Rows (RX4=Index 3, RY4=Index 7)
-    x_vals = []
-    y_vals = []
-    
     parsed_rows = []
+    
+    # We need to collect the "New/Corrected" stats to build our baseline
+    # RX3 = Corrected X (Index 2)
+    # RY3 = Corrected Y (Index 6)
+    all_new_x = []
+    all_new_y = []
+
     for row in raw_data:
         if len(row) < 9: continue
         try:
-            val_x = float(row[3])
-            val_y = float(row[7])
             name = row[8]
             
-            x_vals.append(val_x)
-            y_vals.append(val_y)
-            parsed_rows.append({'name': name, 'x': val_x, 'y': val_y})
+            # --- OLD TABLE (The one we are testing) ---
+            # RX4 (Index 3), RY4 (Index 7)
+            old_x = float(row[3]) / CORRECTION_FACTOR
+            old_y = float(row[7]) / CORRECTION_FACTOR
+
+            # --- NEW TABLE (The "Golden" Baseline) ---
+            # RX3 (Index 2), RY3 (Index 6)
+            new_x = float(row[2]) / CORRECTION_FACTOR
+            new_y = float(row[6]) / CORRECTION_FACTOR
+
+            all_new_x.append(new_x)
+            all_new_y.append(new_y)
+
+            parsed_rows.append({
+                'name': name, 
+                'old_x': old_x, 'old_y': old_y,
+                'new_x': new_x, 'new_y': new_y
+            })
         except ValueError:
             continue
 
-    if len(x_vals) > 0:
-        # 3. Calculate Thresholds (Mean + 3 Sigma)
-        mean_x = np.mean(x_vals)
-        limit_x = mean_x + (3 * np.std(x_vals))
+    if len(parsed_rows) > 0:
+        # --- CALCULATE THRESHOLDS BASED ON "CORRECTED" DATA ---
+        # We define "Failure" as being significantly worse than the 
+        # machine's demonstrated best capability (Corrected state).
         
-        mean_y = np.mean(y_vals)
-        limit_y = mean_y + (3 * np.std(y_vals))
+        # Calculate stats of the NEW tables
+        mean_new_x = np.mean(all_new_x)
+        std_new_x  = np.std(all_new_x)
+        limit_x    = mean_new_x + (3 * std_new_x)
+
+        mean_new_y = np.mean(all_new_y)
+        std_new_y  = np.std(all_new_y)
+        limit_y    = mean_new_y + (3 * std_new_y)
 
         stats_info = [
             f"Total BPMs: {len(parsed_rows)}",
-            f"X Threshold: {limit_x:.3f} um (Mean: {mean_x:.3f})",
-            f"Y Threshold: {limit_y:.3f} um (Mean: {mean_y:.3f})"
+            f"FAIL Threshold X: {limit_x:.3f} um (Based on Corrected Mean + 3s)",
+            f"FAIL Threshold Y: {limit_y:.3f} um (Based on Corrected Mean + 3s)"
         ]
 
-        # 4. Score and Sort
-        # We calculate a 'severity' score to sort by.
-        # Score > 1.0 means it failed. Higher is worse.
+        # --- SCORE & SORT ---
         for row in parsed_rows:
-            score_x = row['x'] / limit_x
-            score_y = row['y'] / limit_y
-            row['severity'] = max(score_x, score_y) # Sort by worst axis
-            row['failed'] = (row['x'] > limit_x) or (row['y'] > limit_y)
+            # Check if OLD table exceeds the CORRECTED limit
+            row['failed_x'] = row['old_x'] > limit_x
+            row['failed_y'] = row['old_y'] > limit_y
+            row['failed']   = row['failed_x'] or row['failed_y']
+            
+            # Severity for sorting (Ratio of Old RMS to Limit)
+            sev_x = row['old_x'] / limit_x if limit_x > 0 else 0
+            sev_y = row['old_y'] / limit_y if limit_y > 0 else 0
+            row['severity'] = max(sev_x, sev_y)
 
-        # Sort descending (Worst at top)
+        # Sort by Severity Descending (Worst OLD tables at top)
         bpm_data = sorted(parsed_rows, key=lambda k: k['severity'], reverse=True)
 
 # ==========================================
@@ -86,23 +115,30 @@ c.setPageSize((43*cm, 24*cm))
 y_start = 20*cm
 row_height = 0.8*cm
 col_name = 2*cm
-col_x = 10*cm
-col_y = 18*cm
-col_status = 26*cm
+col_x_old = 8*cm
+col_x_new = 13*cm
+col_y_old = 19*cm
+col_y_new = 24*cm
+col_status = 30*cm
 
 def draw_header(c, y):
-    c.setFont("Helvetica-Bold", 14)
+    c.setFont("Helvetica-Bold", 12)
     c.setFillColorRGB(0, 0, 0)
     c.drawString(col_name, y, "BPM Name")
-    c.drawString(col_x, y, "X RMS (um)")
-    c.drawString(col_y, y, "Y RMS (um)")
+    
+    c.drawString(col_x_old, y, "Old X (um)")
+    c.drawString(col_x_new, y, "New X (um)")
+    
+    c.drawString(col_y_old, y, "Old Y (um)")
+    c.drawString(col_y_new, y, "New Y (um)")
+    
     c.drawString(col_status, y, "Status")
     c.line(1*cm, y - 0.2*cm, 40*cm, y - 0.2*cm)
     return y - row_height
 
 # --- Draw Title Page & Stats ---
 c.setFont("Helvetica-Bold", 24)
-c.drawString(2*cm, 22*cm, "Static Gain Calibration: Full Report")
+c.drawString(2*cm, 22*cm, "Static Gain Calibration: Worst Offenders")
 
 c.setFont("Helvetica", 12)
 ty = 21.5*cm
@@ -127,17 +163,25 @@ for row in bpm_data:
     c.setFillColorRGB(0, 0, 0) # Back to Black text
     c.setFont("Helvetica", 12)
     
-    c.drawString(col_name + 0.5*cm, current_y + 0.2*cm, row['name'])
+    c.drawString(col_name + 0.2*cm, current_y + 0.2*cm, row['name'])
     
-    # Bold the specific value that failed
-    if row['x'] > limit_x: c.setFont("Helvetica-Bold", 12)
+    # --- X Data ---
+    if row['failed_x']: c.setFont("Helvetica-Bold", 12)
     else: c.setFont("Helvetica", 12)
-    c.drawString(col_x, current_y + 0.2*cm, f"{row['x']:.3f}")
+    c.drawString(col_x_old, current_y + 0.2*cm, f"{row['old_x']:.3f}")
+    
+    c.setFont("Helvetica", 12) # New data is always standard font
+    c.drawString(col_x_new, current_y + 0.2*cm, f"{row['new_x']:.3f}")
 
-    if row['y'] > limit_y: c.setFont("Helvetica-Bold", 12)
+    # --- Y Data ---
+    if row['failed_y']: c.setFont("Helvetica-Bold", 12)
     else: c.setFont("Helvetica", 12)
-    c.drawString(col_y, current_y + 0.2*cm, f"{row['y']:.3f}")
+    c.drawString(col_y_old, current_y + 0.2*cm, f"{row['old_y']:.3f}")
 
+    c.setFont("Helvetica", 12)
+    c.drawString(col_y_new, current_y + 0.2*cm, f"{row['new_y']:.3f}")
+
+    # --- Status ---
     c.setFont("Helvetica-Bold", 12)
     status_text = "FAIL" if row['failed'] else "PASS"
     c.drawString(col_status, current_y + 0.2*cm, status_text)
@@ -156,7 +200,6 @@ c.showPage() # End the table section
 # Reset colors for the graphs
 c.setFillColorRGB(0, 0, 0) 
 c.setStrokeColorRGB(0, 0, 0)
-
 
 # Note that all spacial entries such as X, Y coordinates or item height
 # and width must be multiplies by the constant 'cm' which was imported
