@@ -141,9 +141,6 @@ c.setFillColorRGB(0, 0, 0)
 # above and converts the centimeter units into the native units used in
 # Reportlab's internal code.
 
-c = Canvas('SRreport.pdf')
-c.setPageSize((43*cm, 24*cm))
-
 # Cell 1:
 # Syntax: c.drawImage('Imagefile.png', X, Y, Width, Height)
 # where:
