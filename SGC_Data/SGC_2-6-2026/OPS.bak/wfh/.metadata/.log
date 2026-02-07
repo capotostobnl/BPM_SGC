@@ -1,0 +1,34 @@
+!SESSION 2026-02-07 08:52:16.992 -----------------------------------------------
+eclipse.buildId=unknown
+java.version=11.0.2
+java.vendor=Oracle Corporation
+BootLoader constants: OS=linux, ARCH=x86_64, WS=gtk, NL=en_US
+Framework arguments:  -pluginCustomization /opt/css/preferences/accl/pref-4.6.ini
+Command-line arguments:  -os linux -ws gtk -arch x86_64 -data wfh -pluginCustomization /opt/css/preferences/accl/pref-4.6.ini
+
+!ENTRY org.eclipse.egit.core 1 0 2026-02-07 08:52:23.375
+!MESSAGE Using Apache MINA sshd as ssh client.
+
+!ENTRY org.eclipse.jface 2 0 2026-02-07 08:52:25.140
+!MESSAGE Keybinding conflicts occurred.  They may interfere with normal accelerator operation.
+!SUBENTRY 1 org.eclipse.jface 2 0 2026-02-07 08:52:25.140
+!MESSAGE A conflict occurred for F11:
+Binding(F11,
+	ParameterizedCommand(Command(org.csstudio.opibuilder.actions.fullscreen,Full Screen,
+		Enter/Exit Full Screen,
+		Category(org.eclipse.ui.category.views,Views,Commands for opening views,true),
+		org.eclipse.ui.internal.WorkbenchHandlerServiceHandler@35d114f4,
+		,,true),null),
+	org.eclipse.ui.defaultAcceleratorConfiguration,
+	org.eclipse.ui.contexts.window,,,system)
+Binding(F11,
+	ParameterizedCommand(Command(org.eclipse.debug.ui.commands.DebugLast,Debug,
+		Launch in debug mode,
+		Category(org.eclipse.debug.ui.category.run,Run/Debug,Run/Debug command category,true),
+		org.eclipse.ui.internal.WorkbenchHandlerServiceHandler@3684d2c0,
+		,,true),null),
+	org.eclipse.ui.defaultAcceleratorConfiguration,
+	org.eclipse.ui.contexts.window,,,system)
+
+!ENTRY org.eclipse.e4.ui.workbench 2 0 2026-02-07 08:52:29.706
+!MESSAGE Removing PartDescriptorImpl with the "org.csstudio.pretune" id and the "pretune" label.It points to the non available "bundleclass://org.eclipse.ui.workbench/org.eclipse.ui.internal.e4.compatibility.CompatibilityView" class. Bundle might have been uninstalled
